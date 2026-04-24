@@ -1,1 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAM Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+        button { background: #238636; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #2ea043; }
+        #logout-btn { background: #da3633; }
+        #logout-btn:hover { background: #f85149; }
+        .panel { margin-top: 20px; border: 1px solid #30363d; padding: 15px; border-radius: 5px; background: #161b22; }
+        .hidden { display: none; }
+        pre { background: #010409; padding: 10px; border: 1px solid #30363d; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>IAM RBAC Simulator</h1>
+    <p>Zero-Trust Architecture & Database-Level Policy Enforcement</p>
 
+    <div id="auth-section" class="panel">
+        <button id="login-btn" onclick="login()">Login with GitHub</button>
+        <button id="logout-btn" class="hidden" onclick="logout()">Logout</button>
+    </div>
+    
+    <div id="dashboard" class="panel hidden">
+        <h3>Current Identity Claims</h3>
+        <p><strong>User ID (UUID):</strong> <span id="user-id"></span></p>
+        <p><strong>Injected JWT Role:</strong> <span id="user-role" style="color: #58a6ff; font-weight: bold;"></span></p>
+        
+        <h3>Infrastructure Logs Access Test</h3>
+        <p>Attempting to execute SELECT * FROM infrastructure_logs...</p>
+        <button onclick="fetchLogs()">Manually Query Database</button>
+        <div id="logs"><pre>Awaiting query execution...</pre></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://wqliuzpslygdzooveepm.supabase.co/rest/v1/';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxbGl1enBzbHlnZHpvb3ZlZXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTY0OTgsImV4cCI6MjA5MjYzMjQ5OH0.fDZhLTLxQsr41EMhOtDjwAIATqaTGUX-bXLsbty1JSM';
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function login() {
+            await supabase.auth.signInWithOAuth({
+                provider: 'github',
+                options: { redirectTo: window.location.href }
+            });
+        }
+
+        async function logout() {
+            await supabase.auth.signOut();
+            window.location.reload();
+        }
+
+        async function fetchLogs() {
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML = '<pre>Querying database hardware...</pre>';
+            
+            const { data, error } = await supabase
+                .from('infrastructure_logs')
+                .select('*');
+                
+            if (error) {
+                logsDiv.innerHTML = '<pre style="color: #f85149;">Database Error: ' + error.message + '</pre>';
+                return;
+            }
+            
+            if (data.length === 0) {
+                logsDiv.innerHTML = '<pre style="color: #ff7b72;">0 records returned.\nReason: Postgres Row Level Security silently dropped the query due to insufficient JWT claims.</pre>';
+                return;
+            }
+            
+            logsDiv.innerHTML = '<pre style="color: #3fb950;">' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+
+        async function checkSession() {
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session) {
+                document.getElementById('login-btn').classList.add('hidden');
+                document.getElementById('logout-btn').classList.remove('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                
+                document.getElementById('user-id').innerText = session.user.id;
+                
+                const tokenPayload = JSON.parse(atob(session.access_token.split('.')[1]));
+                const appRole = tokenPayload.app_role || 'user';
+                document.getElementById('user-role').innerText = appRole.toUpperCase();
+                
+                fetchLogs();
+            }
+        }
+
+        checkSession();
+    </script>
+</body>
+</html>

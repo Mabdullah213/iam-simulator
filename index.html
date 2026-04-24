@@ -37,20 +37,20 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://wqliuzpslygdzooveepm.supabase.co/rest/v1/';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxbGl1enBzbHlnZHpvb3ZlZXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTY0OTgsImV4cCI6MjA5MjYzMjQ5OH0.fDZhLTLxQsr41EMhOtDjwAIATqaTGUX-bXLsbty1JSM';
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseApp = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function login() {
-            await supabase.auth.signInWithOAuth({
+            await supabaseApp.auth.signInWithOAuth({
                 provider: 'github',
                 options: { redirectTo: window.location.href }
             });
         }
 
         async function logout() {
-            await supabase.auth.signOut();
+            await supabaseApp.auth.signOut();
             window.location.reload();
         }
 
@@ -58,7 +58,7 @@
             const logsDiv = document.getElementById('logs');
             logsDiv.innerHTML = '<pre>Querying database hardware...</pre>';
             
-            const { data, error } = await supabase
+            const { data, error } = await supabaseApp
                 .from('infrastructure_logs')
                 .select('*');
                 
@@ -76,7 +76,7 @@
         }
 
         async function checkSession() {
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await supabaseApp.auth.getSession();
             
             if (session) {
                 document.getElementById('login-btn').classList.add('hidden');

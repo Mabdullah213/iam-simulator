@@ -9,11 +9,14 @@
         body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
         button { background: #238636; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px; }
         button:hover { background: #2ea043; }
-        #logout-btn { background: #da3633; }
-        #logout-btn:hover { background: #f85149; }
+        .danger-btn { background: #da3633; padding: 5px 10px; }
+        .danger-btn:hover { background: #f85149; }
         .panel { margin-top: 20px; border: 1px solid #30363d; padding: 15px; border-radius: 5px; background: #161b22; }
         .hidden { display: none; }
-        pre { background: #010409; padding: 10px; border: 1px solid #30363d; overflow-x: auto; }
+        input[type="text"] { background: #010409; color: white; border: 1px solid #30363d; padding: 10px; width: 60%; margin-right: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #30363d; padding: 8px; text-align: left; }
+        th { background: #21262d; }
     </style>
 </head>
 <body>
@@ -22,7 +25,7 @@
 
     <div id="auth-section" class="panel">
         <button id="login-btn" onclick="login()">Login with GitHub</button>
-        <button id="logout-btn" class="hidden" onclick="logout()">Logout</button>
+        <button id="logout-btn" class="hidden danger-btn" onclick="logout()">Logout</button>
     </div>
     
     <div id="dashboard" class="panel hidden">
@@ -30,10 +33,16 @@
         <p><strong>User ID (UUID):</strong> <span id="user-id"></span></p>
         <p><strong>Injected JWT Role:</strong> <span id="user-role" style="color: #58a6ff; font-weight: bold;"></span></p>
         
-        <h3>Infrastructure Logs Access Test</h3>
-        <p>Attempting to execute SELECT * FROM infrastructure_logs...</p>
-        <button onclick="fetchLogs()">Manually Query Database</button>
-        <div id="logs"><pre>Awaiting query execution...</pre></div>
+        <div id="admin-panel" class="hidden" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #30363d;">
+            <h3>Admin Write Operations</h3>
+            <input type="text" id="new-log-message" placeholder="Enter new infrastructure log event...">
+            <button onclick="addLog()">Execute INSERT Query</button>
+            <p id="insert-status"></p>
+        </div>
+
+        <h3>Infrastructure Logs Database</h3>
+        <button onclick="fetchLogs()">Refresh SELECT Query</button>
+        <div id="logs"><p>Awaiting query execution...</p></div>
     </div>
 
     <script>
@@ -41,6 +50,7 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxbGl1enBzbHlnZHpvb3ZlZXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTY0OTgsImV4cCI6MjA5MjYzMjQ5OH0.fDZhLTLxQsr41EMhOtDjwAIATqaTGUX-bXLsbty1JSM';
 
         const supabaseApp = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUserRole = 'user';
 
         async function login() {
             await supabaseApp.auth.signInWithOAuth({
@@ -54,25 +64,85 @@
             window.location.reload();
         }
 
+        async function addLog() {
+            const message = document.getElementById('new-log-message').value;
+            const statusText = document.getElementById('insert-status');
+            
+            if (!message) {
+                statusText.innerHTML = '<span style="color: #ff7b72;">Input cannot be empty.</span>';
+                return;
+            }
+
+            statusText.innerHTML = 'Executing...';
+            
+            const { error } = await supabaseApp
+                .from('infrastructure_logs')
+                .insert([{ log_message: message }]);
+                
+            if (error) {
+                statusText.innerHTML = `<span style="color: #f85149;">Database Rejected Write: ${error.message}</span>`;
+            } else {
+                statusText.innerHTML = '<span style="color: #3fb950;">Insert successful.</span>';
+                document.getElementById('new-log-message').value = '';
+                fetchLogs();
+            }
+        }
+
+        async function deleteLog(id) {
+            const { error } = await supabaseApp
+                .from('infrastructure_logs')
+                .delete()
+                .eq('id', id);
+                
+            if (error) {
+                alert(`Database Rejected Delete:\n${error.message}\n\nYour JWT lacks the required claims.`);
+            } else {
+                fetchLogs();
+            }
+        }
+
         async function fetchLogs() {
             const logsDiv = document.getElementById('logs');
-            logsDiv.innerHTML = '<pre>Querying database hardware...</pre>';
+            logsDiv.innerHTML = '<p>Querying database hardware...</p>';
             
             const { data, error } = await supabaseApp
                 .from('infrastructure_logs')
-                .select('*');
+                .select('*')
+                .order('created_at', { ascending: false });
                 
             if (error) {
-                logsDiv.innerHTML = '<pre style="color: #f85149;">Database Error: ' + error.message + '</pre>';
+                logsDiv.innerHTML = `<p style="color: #f85149;">Database Error: ${error.message}</p>`;
                 return;
             }
             
             if (data.length === 0) {
-                logsDiv.innerHTML = '<pre style="color: #ff7b72;">0 records returned.\nReason: Postgres Row Level Security silently dropped the query due to insufficient JWT claims.</pre>';
+                logsDiv.innerHTML = '<p style="color: #ff7b72;">0 records returned. Postgres Row Level Security silently dropped the query.</p>';
                 return;
             }
             
-            logsDiv.innerHTML = '<pre style="color: #3fb950;">' + JSON.stringify(data, null, 2) + '</pre>';
+            let tableHTML = `
+                <table>
+                    <tr>
+                        <th>ID</th>
+                        <th>Log Message</th>
+                        <th>Timestamp (UTC)</th>
+                        <th>Action</th>
+                    </tr>
+            `;
+            
+            data.forEach(row => {
+                tableHTML += `
+                    <tr>
+                        <td>${row.id}</td>
+                        <td>${row.log_message}</td>
+                        <td>${new Date(row.created_at).toLocaleString()}</td>
+                        <td><button class="danger-btn" onclick="deleteLog(${row.id})">DELETE</button></td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += '</table>';
+            logsDiv.innerHTML = tableHTML;
         }
 
         async function checkSession() {
@@ -86,8 +156,12 @@
                 document.getElementById('user-id').innerText = session.user.id;
                 
                 const tokenPayload = JSON.parse(atob(session.access_token.split('.')[1]));
-                const appRole = tokenPayload.app_role || 'user';
-                document.getElementById('user-role').innerText = appRole.toUpperCase();
+                currentUserRole = tokenPayload.app_role || 'user';
+                document.getElementById('user-role').innerText = currentUserRole.toUpperCase();
+                
+                if (currentUserRole === 'admin' || currentUserRole === 'auditor') {
+                    document.getElementById('admin-panel').classList.remove('hidden');
+                }
                 
                 fetchLogs();
             }

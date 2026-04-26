@@ -59,6 +59,12 @@
                 options: { redirectTo: window.location.href }
             });
         }
+        async function loginWithGoogle() {
+            await supabaseApp.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.href }
+            });
+        }
 
         async function logout() {
             await supabaseApp.auth.signOut();
